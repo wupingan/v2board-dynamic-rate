@@ -1,6 +1,6 @@
-# Dynamic Rate Addon（xiao）
+# Dynamic Rate Addon（v2board/xiao）
 
-`dynamic-rate-addon` 是 vboard xiao 项目的“动态倍率旁路扩展”，核心目标是：
+`dynamic-rate-addon` 是 v2board/xiao 项目的“动态倍率旁路扩展”，核心目标是：
 
 - **不修改主项目 `app/` PHP 源码**
 - **不影响上游后续更新**

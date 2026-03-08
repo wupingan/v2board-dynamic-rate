@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dynamic Rate Admin</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 24px; background: #f7f7fb; color: #222; }
+    .card { background: #fff; border-radius: 12px; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,.06); margin-bottom: 14px; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; align-items: center; }
+    input, select, textarea, button { padding: 8px; border: 1px solid #ddd; border-radius: 8px; }
+    button { cursor: pointer; background: #1f6feb; border-color: #1f6feb; color: #fff; }
+    button.secondary { background: #fff; color: #1f6feb; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border-bottom: 1px solid #eee; padding: 8px; text-align: left; }
+    .muted { color: #777; font-size: 12px; }
+    .switch { position: relative; display: inline-block; width: 44px; height: 24px; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; cursor: pointer; inset: 0; background: #cbd5e1; transition: .2s; border-radius: 24px; }
+    .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; top: 3px; background: white; transition: .2s; border-radius: 50%; }
+    .switch input:checked + .slider { background: #0f172a; }
+    .switch input:checked + .slider:before { transform: translateX(20px); }
+    .rule-card { border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; margin-top: 8px; }
+    .rule-title { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .field-wrap { display: flex; flex-direction: column; gap: 4px; }
+    .field-label { font-size: 12px; color: #6b7280; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>动态倍率管理（Sidecar）</h2>
+    <div class="row">
+      <button onclick="loadAll()">刷新数据</button>
+      <button class="secondary" onclick="logout()">退出登录</button>
+    </div>
+    <div class="muted">已启用管理员会话登录。</div>
+  </div>
+
+  <div class="card">
+    <h3>选择节点</h3>
+    <div class="row">
+      <select id="nodeSelect" style="min-width: 360px;"></select>
+      <button onclick="useSelectedNode()">加载节点到编辑器</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>编辑节点</h3>
+    <div class="row">
+      <input id="nodeName" style="min-width: 320px" placeholder="节点名称" readonly />
+      <div class="field-wrap">
+        <div class="field-label">基础倍率（未命中规则时生效）</div>
+        <input id="baseRate" type="number" step="0.01" value="1" placeholder="基础倍率（默认计费倍率）" title="动态倍率关闭或未命中规则时，使用此倍率" />
+      </div>
+    </div>
+    <div class="row">
+      <span>启用动态倍率</span>
+      <label class="switch">
+        <input id="enabled" type="checkbox" />
+        <span class="slider"></span>
+      </label>
+      <span class="muted">根据时间设置不同的倍率系数</span>
+    </div>
+    <div class="row">
+      <span>时间段规则</span>
+      <button class="secondary" onclick="addRule()">+ 添加规则</button>
+      <input id="timezone" value="Asia/Shanghai" placeholder="timezone" />
+    </div>
+    <div id="rulesContainer"></div>
+    <div class="row" style="margin-top:10px;">
+      <button onclick="saveCurrent()">保存规则</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>规则列表</h3>
+    <div class="row">
+      <button onclick="loadNodes()">加载节点</button>
+      <button class="secondary" onclick="loadRules()">加载规则</button>
+    </div>
+    <table id="rulesTable"><thead><tr><th>ID</th><th>type</th><th>server_id</th><th>enabled</th><th>base_rate</th><th>last</th><th>rules</th><th>操作</th></tr></thead><tbody></tbody></table>
+  </div>
+
+<script>
+let selectedNode = null;
+let nodes = [];
+let rulesMap = new Map();
+let editorRules = [];
+
+function api(path, opts = {}) {
+  const headers = Object.assign({ 'Content-Type': 'application/json' }, opts.headers || {});
+  return fetch(path, Object.assign({}, opts, { headers })).then(async r => {
+    const t = await r.text();
+    let j = {};
+    try { j = JSON.parse(t); } catch (_) {}
+    if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+    return j;
+  });
+}
+
+async function loadAll() {
+  await Promise.all([loadNodes(), loadRules()]);
+}
+
+async function loadNodes() {
+  const res = await api('/api/nodes');
+  nodes = (res.data || []);
+  const select = document.getElementById('nodeSelect');
+  select.innerHTML = '';
+  nodes.forEach(n => {
+    const op = document.createElement('option');
+    op.value = `${n.server_type}:${n.server_id}`;
+    op.textContent = `[${n.server_type}] #${n.server_id} ${n.name || ''} (base ${n.rate})`;
+    select.appendChild(op);
+  });
+}
+
+function useSelectedNode() {
+  const value = document.getElementById('nodeSelect').value;
+  const n = nodes.find(x => `${x.server_type}:${x.server_id}` === value);
+  if (!n) {
+    alert('请先选择节点');
+    return;
+  }
+  selectedNode = n;
+  document.getElementById('nodeName').value = n.name || '';
+  document.getElementById('baseRate').value = n.rate;
+  const key = `${n.server_type}:${n.server_id}`;
+  const rule = rulesMap.get(key);
+  document.getElementById('enabled').checked = !!(rule && Number(rule.enabled) === 1);
+  document.getElementById('timezone').value = (rule && rule.timezone) ? rule.timezone : 'Asia/Shanghai';
+  editorRules = (rule && Array.isArray(rule.rules_json))
+    ? rule.rules_json.map(x => ({ start: x.start || '00:00', end: x.end || '23:59', rate: Number(x.rate || 1) }))
+    : [{ start: '00:00', end: '23:59', rate: 1 }];
+  renderRuleEditor();
+}
+
+function addRule() {
+  editorRules.push({ start: '00:00', end: '23:59', rate: 1 });
+  renderRuleEditor();
+}
+
+function removeRule(index) {
+  editorRules.splice(index, 1);
+  renderRuleEditor();
+}
+
+function renderRuleEditor() {
+  const box = document.getElementById('rulesContainer');
+  box.innerHTML = '';
+  editorRules.forEach((r, idx) => {
+    const card = document.createElement('div');
+    card.className = 'rule-card';
+    card.innerHTML = `
+      <div class="rule-title">
+        <strong>规则 ${idx + 1}</strong>
+        <button class="secondary" data-remove="${idx}">删除</button>
+      </div>
+      <div class="row">
+        <div>
+          <div class="muted">开始时间</div>
+          <input type="time" data-field="start" data-index="${idx}" value="${r.start || '00:00'}" />
+        </div>
+        <div>
+          <div class="muted">结束时间</div>
+          <input type="time" data-field="end" data-index="${idx}" value="${r.end || '23:59'}" />
+        </div>
+        <div>
+          <div class="muted">倍率系数</div>
+          <input type="number" step="0.01" min="0.01" data-field="rate" data-index="${idx}" value="${Number(r.rate || 1)}" />
+        </div>
+      </div>
+    `;
+    box.appendChild(card);
+  });
+
+  box.querySelectorAll('button[data-remove]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const i = Number(e.currentTarget.getAttribute('data-remove'));
+      removeRule(i);
+    });
+  });
+
+  box.querySelectorAll('input[data-field]').forEach(input => {
+    input.addEventListener('change', (e) => {
+      const el = e.currentTarget;
+      const idx = Number(el.getAttribute('data-index'));
+      const field = el.getAttribute('data-field');
+      if (!editorRules[idx]) return;
+      if (field === 'rate') {
+        editorRules[idx][field] = Number(el.value || 1);
+      } else {
+        editorRules[idx][field] = el.value;
+      }
+    });
+  });
+}
+
+async function saveCurrent() {
+  if (!selectedNode) {
+    alert('请先选择节点');
+    return;
+  }
+
+  if (!editorRules.length) {
+    alert('至少保留一条规则，或关闭动态倍率后保存');
+    return;
+  }
+
+  const rules_json = editorRules.map(r => ({
+    days: [0,1,2,3,4,5,6],
+    start: r.start,
+    end: r.end,
+    rate: Number(r.rate)
+  }));
+
+  const payload = {
+    server_type: selectedNode.server_type,
+    server_id: Number(selectedNode.server_id),
+    enabled: document.getElementById('enabled').checked ? 1 : 0,
+    base_rate: Number(document.getElementById('baseRate').value),
+    timezone: document.getElementById('timezone').value,
+    rules_json
+  };
+
+  await api('/api/rules/upsert', { method: 'POST', body: JSON.stringify(payload) });
+  alert('保存成功');
+  await loadRules();
+}
+
+async function loadRules() {
+  const res = await api('/api/rules/list');
+  const rows = (res.data || []);
+  rulesMap = new Map(rows.map(r => [`${r.server_type}:${r.server_id}`, r]));
+
+  const tbody = document.querySelector('#rulesTable tbody');
+  tbody.innerHTML = '';
+  rows.forEach(r => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${r.id}</td><td>${r.server_type}</td><td>${r.server_id}</td><td>${r.enabled}</td><td>${r.base_rate}</td><td>${r.last_applied_rate || ''}</td><td><pre style='white-space:pre-wrap'>${JSON.stringify(r.rules_json || [], null, 2)}</pre></td>
+      <td><button onclick='removeRule(${r.id})'>删除</button></td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+async function removeRuleApi(id) {
+  if (!confirm('确认删除?')) return;
+  await api('/api/rules/' + id, { method: 'DELETE' });
+  await loadRules();
+}
+
+async function logout() {
+  await api('/ui/logout', { method: 'POST' });
+  location.reload();
+}
+
+window.removeRule = removeRuleApi;
+window.addEventListener('load', async () => {
+  await loadAll();
+  if (nodes.length > 0) {
+    useSelectedNode();
+  }
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dynamic Rate Login</title>
+  <style>
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #f4f6fb; font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+    .card { width: 360px; background: #fff; border-radius: 14px; box-shadow: 0 6px 24px rgba(0,0,0,.08); padding: 22px; }
+    h2 { margin: 0 0 14px; font-size: 20px; }
+    input { width: 100%; box-sizing: border-box; padding: 10px; border: 1px solid #d8dbe5; border-radius: 10px; margin-bottom: 10px; }
+    button { width: 100%; padding: 10px; border: 0; border-radius: 10px; background: #1f6feb; color: #fff; cursor: pointer; }
+    .tip { margin-top: 8px; color: #6b7280; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>管理员登录</h2>
+    <input id="username" placeholder="用户名" value="admin" />
+    <input id="password" type="password" placeholder="密码" />
+    <button onclick="login()">登录</button>
+    <div class="tip">入口地址已随机化，仅登录后可进入配置页面。</div>
+  </div>
+<script>
+async function login() {
+  const username = document.getElementById('username').value.trim();
+  const password = document.getElementById('password').value;
+  const r = await fetch('/ui/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password })
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    alert(j.error || '登录失败');
+    return;
+  }
+  location.href = '__ADMIN_ENTRY__';
+}
+</script>
+</body>
+</html>

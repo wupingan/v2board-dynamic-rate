@@ -1,6 +1,6 @@
 我的频道：https://t.me/v2boardCJ
 TG：https://t.me/vkwj2323_bot
-# Dynamic Rate Addon（v2board/xiao）
+# v2board面板、xiao面板实现动态倍率
 `dynamic-rate-addon` 是 v2board/xiao 项目的“动态倍率旁路扩展”，核心目标是：
 
 - **不修改主项目 `app/` PHP 源码**

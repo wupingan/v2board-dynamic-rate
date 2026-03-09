@@ -6,6 +6,7 @@ TG：https://t.me/vkwj2323_bot
 - **不修改主项目 `app/` PHP 源码**
 - **不影响上游后续更新**
 - 通过 **DB + worker + sidecar** 实现节点动态倍率
+<img width="1848" height="812" alt="image" src="https://github.com/user-attachments/assets/dc90f168-8658-431f-bb8b-aad2c11ac208" />
 
 ---
 
